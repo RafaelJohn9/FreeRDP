@@ -180,7 +180,6 @@ jobs:
           $packages = @(
             "zlib:$triplet",
             "openssl:$triplet",
-            "jansson:$triplet",
             "cjson:$triplet",
             "uriparser:$triplet"
           )
@@ -198,6 +197,15 @@ jobs:
               exit $LASTEXITCODE
             }
           }
+
+      - name: Debug vcpkg installed packages
+        shell: pwsh
+        run: |
+          $triplet = "${{ matrix.arch }}-windows"
+          Write-Host "=== Installed packages for $triplet ==="
+          & "${{ github.workspace }}/vcpkg/vcpkg.exe" list --triplet $triplet
+          Write-Host "=== jansson port info ==="
+          & "${{ github.workspace }}/vcpkg/vcpkg.exe" search jansson
 
       # ── Configure ─────────────────────────────────────────────────────────
       - name: Configure CMake
