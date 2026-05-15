@@ -165,7 +165,7 @@ jobs:
           VCPKG_FORCE_SYSTEM_BINARIES: '1'
         run: |
           $triplet = "${{ matrix.arch }}-windows"
-          & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet" --only-downloads
+          & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet" "libusb:$triplet" --only-downloads
 
       - name: Install vcpkg dependencies
         shell: pwsh
@@ -179,6 +179,7 @@ jobs:
           $triplet = "${{ matrix.arch }}-windows"
           $packages = @(
             "zlib:$triplet",
+            "libusb:$triplet",
             "openssl:$triplet",
             "cjson:$triplet",
             "uriparser:$triplet"
