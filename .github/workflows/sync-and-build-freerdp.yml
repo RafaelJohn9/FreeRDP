@@ -1,0 +1,244 @@
+name: Sync FreeRDP Tags & Build Windows
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # Every midnight UTC
+  workflow_dispatch:     # Allow manual trigger
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Check for new tags in the upstream repo
+  # ─────────────────────────────────────────────
+  sync-tags:
+    name: Sync upstream tags
+    runs-on: ubuntu-latest
+    outputs:
+      new_tags: ${{ steps.compare.outputs.new_tags }}
+      has_new: ${{ steps.compare.outputs.has_new }}
+    steps:
+      - name: Checkout this repo (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch all upstream tags
+        id: upstream
+        run: |
+          git remote add upstream https://github.com/FreeRDP/FreeRDP.git 2>/dev/null || true
+          git fetch upstream --tags --force
+          # Collect every upstream tag name
+          git tag -l | sort -V > /tmp/upstream_tags.txt
+          echo "Total upstream tags: $(wc -l < /tmp/upstream_tags.txt)"
+
+      - name: Compare with local tags
+        id: compare
+        run: |
+          git tag -l | sort -V > /tmp/local_tags.txt
+          # Tags in upstream but not in this repo
+          NEW=$(comm -23 /tmp/upstream_tags.txt /tmp/local_tags.txt | tr '\n' ' ')
+          echo "New tags: $NEW"
+          if [ -n "$NEW" ]; then
+            echo "has_new=true"  >> "$GITHUB_OUTPUT"
+            # JSON array for matrix
+            JSON=$(echo "$NEW" | tr ' ' '\n' | grep -v '^$' \
+                   | jq -R . | jq -sc .)
+            echo "new_tags=$JSON" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+            echo "new_tags=[]"   >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push new tags to this repo
+        if: steps.compare.outputs.has_new == 'true'
+        run: |
+          git push origin --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────
+  # 2. Classify tags and fan-out the matrix
+  # ─────────────────────────────────────────────
+  prepare-matrix:
+    name: Prepare build matrix
+    needs: sync-tags
+    if: needs.sync-tags.outputs.has_new == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - name: Build matrix JSON
+        id: build-matrix
+        run: |
+          TAGS='${{ needs.sync-tags.outputs.new_tags }}'
+
+          # Label each tag as stable or unstable
+          # Stable:   vX.Y.Z  (no pre-release suffix)
+          # Unstable: vX.Y.Z-alpha/beta/rc/nightly/dev/…
+          MATRIX=$(echo "$TAGS" | jq -c '
+            [
+              .[] |
+              . as $tag |
+              {
+                tag: $tag,
+                stability: (
+                  if test("^[0-9]+\\.[0-9]+\\.[0-9]+$") or
+                     test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")
+                  then "stable"
+                  else "unstable"
+                  end
+                )
+              }
+            ]
+          ')
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Matrix:"
+          echo "$MATRIX" | jq .
+
+  # ─────────────────────────────────────────────
+  # 3. Windows builds (matrix)
+  # ─────────────────────────────────────────────
+  build-windows:
+    name: Build [${{ matrix.cfg.tag }}] (${{ matrix.cfg.stability }}) — ${{ matrix.arch }}
+    needs: prepare-matrix
+    if: needs.prepare-matrix.outputs.matrix != '[]'
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+        arch:
+          - x64
+          - x86
+          - arm64
+
+    steps:
+      - name: Checkout FreeRDP at tag ${{ matrix.cfg.tag }}
+        uses: actions/checkout@v4
+        with:
+          repository: FreeRDP/FreeRDP
+          ref: ${{ matrix.cfg.tag }}
+          submodules: recursive
+
+      # ── Toolchain ────────────────────────────
+      - name: Setup MSVC (Developer Command Prompt)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch == 'x86' && 'x86' || matrix.arch == 'arm64' && 'amd64_arm64' || 'amd64' }}
+
+      - name: Install CMake & Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ github.workspace }}/vcpkg
+          vcpkgGitCommitId: "a42af01b72c28a8e1d7b48107b33e4f286a55ef6" # pin for reproducibility
+
+      # ── Configure ────────────────────────────
+      - name: Configure CMake
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          $triplet = "${{ matrix.arch }}-windows"
+          cmake -B build `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET="$triplet" `
+            -DWITH_CLIENT=ON `
+            -DWITH_SERVER=ON `
+            -DWITH_CHANNELS=ON `
+            -DWITH_OPENSSL=ON `
+            -DBUILD_SHARED_LIBS=ON `
+            -DWITH_WINPR_TOOLS=ON
+
+      # ── Build ─────────────────────────────────
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # ── Package ──────────────────────────────
+      - name: Package artifacts
+        run: |
+          $suffix = "${{ matrix.cfg.tag }}-windows-${{ matrix.arch }}-${{ matrix.cfg.stability }}"
+          cmake --install build --prefix "dist/$suffix"
+          Compress-Archive -Path "dist/$suffix/*" `
+                           -DestinationPath "freerdp-$suffix.zip"
+
+      # ── Upload build artifact ─────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freerdp-${{ matrix.cfg.tag }}-windows-${{ matrix.arch }}-${{ matrix.cfg.stability }}
+          path: freerdp-${{ matrix.cfg.tag }}-windows-${{ matrix.arch }}-${{ matrix.cfg.stability }}.zip
+          retention-days: 90
+
+  # ─────────────────────────────────────────────
+  # 4. Create GitHub Releases for each new tag
+  # ─────────────────────────────────────────────
+  create-releases:
+    name: Create releases
+    needs: [prepare-matrix, build-windows]
+    if: needs.prepare-matrix.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+
+    steps:
+      - name: Download all artifacts for this tag
+        uses: actions/download-artifact@v4
+        with:
+          pattern: freerdp-${{ matrix.cfg.tag }}-windows-*
+          path: release-assets/
+          merge-multiple: true
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ matrix.cfg.tag }}
+          name: "FreeRDP ${{ matrix.cfg.tag }}"
+          prerelease: ${{ matrix.cfg.stability == 'unstable' }}
+          body: |
+            ## FreeRDP ${{ matrix.cfg.tag }} — Windows builds
+
+            | Property | Value |
+            |----------|-------|
+            | Upstream tag | [`${{ matrix.cfg.tag }}`](https://github.com/FreeRDP/FreeRDP/releases/tag/${{ matrix.cfg.tag }}) |
+            | Channel | **${{ matrix.cfg.stability }}** |
+            | Architectures | x64 · x86 · arm64 |
+            | Built on | ${{ github.run_id }} |
+
+            > Builds are generated automatically every midnight by the [sync workflow](../../actions/workflows/sync-and-build-freerdp.yml).
+          files: release-assets/*.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────
+  # 5. Summary (always runs)
+  # ─────────────────────────────────────────────
+  summary:
+    name: Workflow summary
+    needs: [sync-tags, prepare-matrix, build-windows, create-releases]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write job summary
+        run: |
+          echo "## FreeRDP Nightly Sync — $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ needs.sync-tags.outputs.has_new }}" = "true" ]; then
+            echo "### 🆕 New tags detected" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo '${{ needs.sync-tags.outputs.new_tags }}' | tr ',' '\n' | tr -d '[]"' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "Windows builds (x64/x86/arm64) created and uploaded as release assets." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ No new upstream tags — nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          fi
