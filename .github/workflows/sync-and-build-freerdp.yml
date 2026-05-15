@@ -168,6 +168,7 @@ jobs:
           & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet" --only-downloads
 
       - name: Install vcpkg dependencies
+        shell: pwsh
         env:
           VCPKG_BINARY_SOURCES: clear;x-gha,readwrite
           ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -176,20 +177,26 @@ jobs:
           VCPKG_DISABLE_PKGCONFIG_FIXUP: 'YES'
         run: |
           $triplet = "${{ matrix.arch }}-windows"
+          $packages = @(
+            "zlib:$triplet",
+            "openssl:$triplet",
+            "jansson:$triplet",
+            "cjson:$triplet",
+            "uriparser:$triplet"
+          )
+
           $maxRetries = 3
-          for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
-            & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet"
-            if ($LASTEXITCODE -eq 0) {
-              break
+          foreach ($pkg in $packages) {
+            for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+              Write-Host "Installing $pkg (attempt $attempt/$maxRetries)..."
+              & "${{ github.workspace }}/vcpkg/vcpkg.exe" install $pkg
+              if ($LASTEXITCODE -eq 0) { break }
+              if ($attempt -lt $maxRetries) { Start-Sleep -Seconds (5 * $attempt) }
             }
-
-            if ($attempt -lt $maxRetries) {
-              Start-Sleep -Seconds (5 * $attempt)
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to install $pkg"
+              exit $LASTEXITCODE
             }
-          }
-
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
           }
 
       # ── Configure ─────────────────────────────────────────────────────────
@@ -209,9 +216,12 @@ jobs:
             -DWITH_CHANNELS=ON `
             -DWITH_OPENSSL=ON `
             -DWITH_FFMPEG=OFF `
+            -DWITH_SWSCALE=OFF `
+            -DWITH_GSTREAMER_1_0=OFF `
             -DBUILD_SHARED_LIBS=ON `
             -DWITH_PKGCONFIG=OFF `
             -DWITH_WINPR_TOOLS=ON
+          # No need for -DOPENSSL_ROOT_DIR — vcpkg toolchain handles OpenSSL location
 
       # ── Build ──────────────────────────────────────────────────────────────
       - name: Build
