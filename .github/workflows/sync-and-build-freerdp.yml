@@ -151,12 +151,21 @@ jobs:
         with:
           repository: microsoft/vcpkg
           path: vcpkg
-          ref: a42af01b72c28a8e1d7b48107b33e4f286a55ef6
 
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
           & "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+
+      - name: Prefetch vcpkg dependencies
+        env:
+          VCPKG_BINARY_SOURCES: clear;x-gha,readwrite
+          ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIONS_CACHE_URL: ${{ github.server_url }}/_apis/artifactcache/
+          VCPKG_FORCE_SYSTEM_BINARIES: '1'
+        run: |
+          $triplet = "${{ matrix.arch }}-windows"
+          & "${{ github.workspace }}/vcpkg/vcpkg.exe" fetch "zlib:$triplet"
 
       - name: Install vcpkg dependencies
         env:
@@ -167,7 +176,21 @@ jobs:
           VCPKG_DISABLE_PKGCONFIG_FIXUP: 'YES'
         run: |
           $triplet = "${{ matrix.arch }}-windows"
-          & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet"
+          $maxRetries = 3
+          for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet"
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+
+            if ($attempt -lt $maxRetries) {
+              Start-Sleep -Seconds (5 * $attempt)
+            }
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       # ── Configure ─────────────────────────────────────────────────────────
       - name: Configure CMake
