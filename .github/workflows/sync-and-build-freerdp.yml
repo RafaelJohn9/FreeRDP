@@ -164,6 +164,7 @@ jobs:
           ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTIONS_CACHE_URL: ${{ github.server_url }}/_apis/artifactcache/
           VCPKG_FORCE_SYSTEM_BINARIES: '1'
+          VCPKG_DISABLE_PKGCONFIG_FIXUP: 'YES'
         run: |
           $triplet = "${{ matrix.arch }}-windows"
           & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet"
