@@ -82,6 +82,10 @@ jobs:
       - name: Resolve tags to build
         id: resolve
         run: |
+          # Ensure inputs are properly sorted (comm requires sorted files)
+          sort -u -V /tmp/upstream_tags.txt -o /tmp/upstream_tags.txt || true
+          sort -u -V /tmp/local_tags.txt -o /tmp/local_tags.txt || true
+
           # Tags in upstream that are NOT yet in this repo
           comm -23 /tmp/upstream_tags.txt /tmp/local_tags.txt \
             > /tmp/new_tags.txt
