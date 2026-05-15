@@ -150,6 +150,7 @@ jobs:
           $triplet = "${{ matrix.arch }}-windows"
           cmake -B build `
             -G Ninja `
+            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="$triplet" `
