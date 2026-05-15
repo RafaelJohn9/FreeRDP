@@ -58,7 +58,9 @@ jobs:
           echo "Latest tag: $LATEST_TAG"
           TAGS_JSON=$(printf '%s\n' "$LATEST_TAG" | jq -R . | jq -s .)
 
-          echo "tags_to_build=$TAGS_JSON" >> "$GITHUB_OUTPUT"
+          echo "tags_to_build<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$TAGS_JSON" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           echo "mode=local-latest" >> "$GITHUB_OUTPUT"
           echo "has_tags=true" >> "$GITHUB_OUTPUT"
 
@@ -97,7 +99,9 @@ jobs:
             ]
           ')
 
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "matrix<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           echo "Build matrix:"
           echo "$MATRIX" | jq .
 
