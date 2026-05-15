@@ -208,8 +208,9 @@ jobs:
             -DWITH_SERVER=ON `
             -DWITH_CHANNELS=ON `
             -DWITH_OPENSSL=ON `
+            -DWITH_FFMPEG=OFF `
             -DBUILD_SHARED_LIBS=ON `
-            -DWITH-PKGCONFIG=OFF `
+            -DWITH_PKGCONFIG=OFF `
             -DWITH_WINPR_TOOLS=ON
 
       # ── Build ──────────────────────────────────────────────────────────────
