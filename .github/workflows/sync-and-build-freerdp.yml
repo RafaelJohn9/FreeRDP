@@ -83,11 +83,11 @@ jobs:
         id: resolve
         run: |
           # Ensure inputs are properly sorted (comm requires sorted files)
-          sort -u -V /tmp/upstream_tags.txt -o /tmp/upstream_tags.txt || true
-          sort -u -V /tmp/local_tags.txt -o /tmp/local_tags.txt || true
+          sort -u -V /tmp/upstream_tags.txt > /tmp/upstream_tags_sorted.txt
+          sort -u -V /tmp/local_tags.txt > /tmp/local_tags_sorted.txt
 
           # Tags in upstream that are NOT yet in this repo
-          comm -23 /tmp/upstream_tags.txt /tmp/local_tags.txt \
+          comm -23 /tmp/upstream_tags_sorted.txt /tmp/local_tags_sorted.txt \
             > /tmp/new_tags.txt
 
           NEW_COUNT=$(grep -c . /tmp/new_tags.txt 2>/dev/null || echo 0)
