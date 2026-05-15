@@ -185,6 +185,7 @@ jobs:
             -DWITH_CHANNELS=ON `
             -DWITH_OPENSSL=ON `
             -DBUILD_SHARED_LIBS=ON `
+            -DWITH-PKGCONFIG=OFF `
             -DWITH_WINPR_TOOLS=ON
 
       # ── Build ──────────────────────────────────────────────────────────────
