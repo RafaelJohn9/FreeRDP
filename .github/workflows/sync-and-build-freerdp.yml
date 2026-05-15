@@ -140,6 +140,12 @@ jobs:
       - name: Install CMake & Ninja
         uses: lukka/get-cmake@latest
 
+      - name: Disable pkg-config acquisition
+        shell: pwsh
+        run: |
+          echo "VCPKG_PKGCONFIG=OFF" >> $env:GITHUB_ENV
+
+
       - name: Checkout vcpkg
         uses: actions/checkout@v4
         with:
