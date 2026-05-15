@@ -165,7 +165,7 @@ jobs:
           VCPKG_FORCE_SYSTEM_BINARIES: '1'
         run: |
           $triplet = "${{ matrix.arch }}-windows"
-          & "${{ github.workspace }}/vcpkg/vcpkg.exe" fetch "zlib:$triplet"
+          & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet" --only-downloads
 
       - name: Install vcpkg dependencies
         env:
