@@ -82,13 +82,19 @@ jobs:
       - name: Resolve tags to build
         id: resolve
         run: |
-          # Ensure inputs are properly sorted (comm requires sorted files)
-          sort -u -V /tmp/upstream_tags.txt > /tmp/upstream_tags_sorted.txt
-          sort -u -V /tmp/local_tags.txt > /tmp/local_tags_sorted.txt
+          # comm requires both inputs to be sorted with the same byte-wise order.
+          # Use the C locale for comparison, then version-sort only for output.
+          LC_ALL=C sort -u /tmp/upstream_tags.txt > /tmp/upstream_tags_sorted.txt
+          LC_ALL=C sort -u /tmp/local_tags.txt > /tmp/local_tags_sorted.txt
 
           # Tags in upstream that are NOT yet in this repo
           comm -23 /tmp/upstream_tags_sorted.txt /tmp/local_tags_sorted.txt \
             > /tmp/new_tags.txt
+
+          # Keep any newly discovered tags in version order for readability.
+          if [ -s /tmp/new_tags.txt ]; then
+            sort -u -V /tmp/new_tags.txt -o /tmp/new_tags.txt
+          fi
 
           NEW_COUNT=$(grep -c . /tmp/new_tags.txt 2>/dev/null || echo 0)
           echo "New (unseen) tags: $NEW_COUNT"
@@ -101,7 +107,7 @@ jobs:
           else
             # No new tags — fall back to the 3 most-recent upstream tags
             MODE="fallback"
-            tail -3 /tmp/upstream_tags.txt > /tmp/tags_to_build.txt
+            sort -u -V /tmp/upstream_tags.txt | tail -3 > /tmp/tags_to_build.txt
             echo "→ Fallback: building latest 3 upstream tags:"
             cat /tmp/tags_to_build.txt
           fi
