@@ -147,6 +147,10 @@ jobs:
           vcpkgGitCommitId: "a42af01b72c28a8e1d7b48107b33e4f286a55ef6"
 
       - name: Install vcpkg dependencies
+        env:
+          VCPKG_BINARY_SOURCES: clear;x-gha,readwrite
+          ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIONS_CACHE_URL: ${{ github.server_url }}/_apis/artifactcache/
         run: |
           $triplet = "${{ matrix.arch }}-windows"
           & "${{ github.workspace }}/vcpkg/vcpkg.exe" install "zlib:$triplet"
