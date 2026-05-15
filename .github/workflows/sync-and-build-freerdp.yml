@@ -140,11 +140,17 @@ jobs:
       - name: Install CMake & Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Setup vcpkg (pinned commit)
-        uses: lukka/run-vcpkg@v11
+      - name: Checkout vcpkg
+        uses: actions/checkout@v4
         with:
-          vcpkgDirectory: ${{ github.workspace }}/vcpkg
-          vcpkgGitCommitId: "a42af01b72c28a8e1d7b48107b33e4f286a55ef6"
+          repository: microsoft/vcpkg
+          path: vcpkg
+          ref: a42af01b72c28a8e1d7b48107b33e4f286a55ef6
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          & "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
 
       - name: Install vcpkg dependencies
         env:
