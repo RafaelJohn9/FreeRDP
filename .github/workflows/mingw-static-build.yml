@@ -1,4 +1,4 @@
-name: mingw-builder
+name: mingw-static-builder
 on:
   workflow_dispatch:
     branches: [ master, stable* ]
